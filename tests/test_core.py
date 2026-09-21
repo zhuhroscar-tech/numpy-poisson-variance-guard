@@ -204,6 +204,53 @@ def test_safe_poisson_zero_size_returns_empty():
     assert result.shape == (0,)
 
 
+def test_safe_poisson_rejects_lam_beyond_int64_safe_range():
+    """Regression test for a real, previously-unguarded defect found by
+    this run's backstop inspection: safe_poisson's PTRS proposal
+    envelope can generate candidate k values roughly
+    lam + O(20*sqrt(lam)) above lam. For lam close to
+    np.iinfo(np.int64).max, that pushes candidates past the int64
+    range, and the float64->int64 cast on the output array then
+    silently wraps/corrupts (RuntimeWarning: invalid value encountered
+    in cast) instead of raising -- returning finite-looking but
+    completely wrong samples, exactly the failure class this whole
+    package exists to catch. Before the _MAX_SAFE_LAM guard was added,
+    calling safe_poisson(1e19, ...) returned samples clamped near
+    int64 max with ~8% relative error on the mean and no exception at
+    all; this test proves the guard now raises instead."""
+    with pytest.raises(ValueError, match="too large"):
+        safe_poisson(1e19, 100)
+    with pytest.raises(ValueError, match="too large"):
+        safe_poisson(5e19, 100)
+
+
+def test_safe_poisson_upper_bound_matches_numpys_own_guard():
+    """safe_poisson must never accept an input that numpy's own
+    Generator.poisson would itself refuse -- independently confirmed
+    against the installed numpy build (not a hardcoded assumption)."""
+    rng = np.random.default_rng(0)
+    boundary = safe_poisson.__globals__["_MAX_SAFE_LAM"]
+    # Just below the guard's threshold: numpy's own sampler must also
+    # accept it (proves our threshold is not stricter than numpy's).
+    just_below = boundary * 0.999999
+    rng.poisson(just_below, size=1)  # must not raise
+    # At/above the guard's threshold: safe_poisson must refuse.
+    with pytest.raises(ValueError, match="too large"):
+        safe_poisson(boundary, 10)
+
+
+def test_safe_poisson_still_correct_just_under_the_new_boundary():
+    """The new upper-bound guard must not have narrowed the sampler's
+    correct operating range for lam values that were always fine --
+    e.g. 1e18 remains fully within range and must still produce
+    correct mean/variance."""
+    rng = np.random.default_rng(3)
+    lam = 1e18
+    samples = safe_poisson(lam, 500, rng=rng)
+    mean = samples.astype(np.float64).mean()
+    assert abs(mean - lam) / lam < 0.01
+
+
 def test_safe_poisson_is_reproducible_with_seeded_rng():
     rng1 = np.random.default_rng(123)
     rng2 = np.random.default_rng(123)

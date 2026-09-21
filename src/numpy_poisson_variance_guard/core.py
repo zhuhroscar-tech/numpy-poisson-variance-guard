@@ -200,6 +200,23 @@ def _lgamma_general(x: np.ndarray) -> np.ndarray:
 # ---------------------------------------------------------------------------
 
 
+# Upper domain bound for safe_poisson, matching numpy's own upstream
+# guard: Generator.poisson(lam) itself raises ValueError("lam value too
+# large") once lam approaches np.iinfo(np.int64).max (empirically
+# ~9.223372006e18 on numpy 2.5.3, independently bisected against the
+# installed build -- see scratch_numpy_threshold.py in this repo's run
+# history). safe_poisson's own PTRS proposal envelope can generate
+# candidate k values roughly lam + O(20*sqrt(lam)) above lam, so its
+# OWN silent-corruption boundary sits a little higher still
+# (~9.223372023e18, independently bisected -- see
+# scratch_bisect_boundary.py). Using numpy's own (lower, more
+# conservative) threshold here means: (a) safe_poisson never accepts an
+# input that numpy's own sampler would refuse, and (b) it always
+# refuses strictly before its own float64->int64 cast can silently
+# corrupt, with margin to spare.
+_MAX_SAFE_LAM = 9.223372006484771e18
+
+
 def safe_poisson(
     lam: float,
     size: int,
@@ -223,6 +240,19 @@ def safe_poisson(
         raise ValueError(f"lam must be finite and non-negative, got {lam}")
     if size < 0:
         raise ValueError(f"size must be non-negative, got {size}")
+    if lam >= _MAX_SAFE_LAM:
+        raise ValueError(
+            f"lam={lam:.6e} is too large to sample safely into an int64 "
+            f"output array (max safe lam is {_MAX_SAFE_LAM:.6e}): the PTRS "
+            "proposal envelope can generate candidate k values roughly "
+            "lam + O(20*sqrt(lam)) above lam, and once that exceeds "
+            "np.iinfo(np.int64).max the float64->int64 cast in this "
+            "sampler is undefined and silently returns corrupted/negative "
+            "values (this is exactly numpy's own upstream 'lam value too "
+            "large' guard -- Generator.poisson itself raises ValueError "
+            "in this same regime; this sampler must too, rather than "
+            "returning a finite-looking but wrong answer)."
+        )
     if rng is None:
         rng = np.random.default_rng()
     if size == 0:

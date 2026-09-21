@@ -151,6 +151,16 @@ print(samples.var() / 1e17)   # ~1.0, correct
   but this guard is not a substitute for eventually removing the
   workaround once a numpy release with the fix is your minimum
   supported version.
+- `safe_poisson` raises `ValueError` for `lam >= ~9.223372006e18`
+  (matching numpy's own `Generator.poisson` upper-domain guard) rather
+  than sampling: found and fixed in v0.1.1 after a routine
+  never-before-run backstop inspection showed the PTRS proposal
+  envelope can generate candidate `k` values roughly
+  `lam + O(20*sqrt(lam))` above `lam`, which silently overflowed the
+  `int64` output array once `lam` got close enough to
+  `np.iinfo(np.int64).max` -- returning finite-looking but wrong
+  samples with no exception. v0.1.0 did not guard this; upgrade if you
+  ever pass `lam` anywhere near that magnitude.
 
 ## Development and removal
 

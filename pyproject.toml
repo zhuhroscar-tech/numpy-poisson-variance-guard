@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "numpy-poisson-variance-guard"
-version = "0.1.0"
+version = "0.1.1"
 description = "Detects and works around a real numpy bug: Generator.poisson(lam) silently inflates sample variance for large lam (>=1e15) due to float64 log-pmf cancellation (numpy/numpy#31986)"
 readme = "README.md"
 license = { text = "MIT" }

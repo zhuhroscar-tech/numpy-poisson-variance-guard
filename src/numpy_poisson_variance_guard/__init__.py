@@ -32,7 +32,7 @@ PTRS sampler built on top of it, not a numpy source patch.
 """
 from __future__ import annotations
 
-__version__ = "0.1.0"
+__version__ = "0.1.1"
 
 from .core import (
     PoissonVarianceDiagnosis,
